@@ -71,8 +71,8 @@ h1, h2, h3, p { margin: 0; }
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
 .certificate {
-  position: relative; container-type: inline-size; background: #fff; overflow: hidden; touch-action: none;
-  aspect-ratio: var(--ar); width: min(100%, calc((100vh - 300px) * var(--ar)));
+  position: relative; container-type: inline-size; background: #fff; overflow: hidden; touch-action: auto;
+  aspect-ratio: var(--ar); width: min(100%, calc((100dvh - 300px) * var(--ar)));
   box-shadow: 0 10px 30px #1b1e252b;
 }
 .template-img { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
@@ -134,7 +134,7 @@ h1, h2, h3, p { margin: 0; }
 
 .select-wrap { position: relative; }
 .select-wrap select { appearance: none; padding-right: 30px; }
-.select-wrap svg { position: absolute; right: 11px; top: 12px; color: var(--muted); pointer-events: none; }
+.select-wrap svg { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .number-control, .color-control { height: 38px; border: 1px solid #d9dce3; border-radius: 8px; display: flex; align-items: center; padding: 0 10px; background: var(--surface); gap: 8px; }
 .number-control:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #3347c91f; }
@@ -186,7 +186,7 @@ h1, h2, h3, p { margin: 0; }
 
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; z-index: 40; background: #14171e80; display: grid; place-items: center; padding: 20px; }
-.drive-modal { width: min(460px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: var(--surface); border-radius: 16px; padding: 24px; box-shadow: 0 20px 60px #11182740; }
+.drive-modal { width: min(460px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; background: var(--surface); border-radius: 16px; padding: 24px; box-shadow: 0 20px 60px #11182740; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; }
 .drive-modal-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
 .drive-modal h2 { font-size: 21px; font-weight: 700; letter-spacing: -.4px; margin: 16px 0 6px; }
@@ -198,30 +198,66 @@ h1, h2, h3, p { margin: 0; }
 .setup-link:hover { color: var(--accent); }
 
 /* Responsive */
-@media (max-width: 1050px) {
-  .workspace { grid-template-columns: minmax(0, 1fr) 340px; }
-  .editor-area { padding: 24px 20px; }
-  .canvas-stage { padding: 20px; min-height: 360px; }
-  .topbar { padding: 0 20px; }
+@media (max-width: 1200px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 350px; }
+  .editor-area { padding: 24px 22px; }
 }
-@media (max-width: 800px) {
-  :root { --topbar: 60px; }
-  .workspace { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; border-left: 0; border-top: 1px solid var(--line); }
-  .panel-content { overflow: visible; }
-  .editor-area { padding: 20px 16px; }
-  .canvas-stage { min-height: 260px; padding: 12px; }
-  .certificate { width: min(100%, calc((100vh - 220px) * var(--ar))); }
-  .topbar { padding: 0 14px; }
-  .top-actions .btn-soft { display: none; }
-  .editor-heading p { max-width: 280px; }
-}
-@media (max-width: 480px) {
-  .editor-heading { align-items: flex-end; }
-  .editor-heading > .btn { font-size: 0; padding: 0; width: 38px; gap: 0; }
+@media (max-width: 960px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 320px; }
+  .editor-heading p { display: none; }
+  .canvas-stage { padding: 18px; min-height: 340px; }
   .canvas-hint { display: none; }
+  .topbar { padding: 0 18px; }
+}
+@media (max-width: 820px) {
+  :root { --topbar: 58px; }
+  .workspace { grid-template-columns: 1fr; }
+  .topbar { padding: 0 14px; }
+  .editor-area { padding: 18px 14px 6px; }
+  .editor-heading { margin-bottom: 16px; }
+  .editor-heading h1 { font-size: 21px; }
+  .canvas-hint { display: flex; }
+  .canvas-stage { min-height: 0; padding: 12px; border-radius: 12px; }
+  .certificate { width: min(100%, calc(70dvh * var(--ar))); }
+  .empty-canvas { padding: 8px 0; }
+  .sidebar { position: static; height: auto; border-left: 0; border-top: 1px solid var(--line); margin-top: 12px; }
+  .side-tabs { position: sticky; top: var(--topbar); z-index: 5; background: var(--surface); }
+  .panel-content { overflow: visible; padding: 18px 16px 32px; }
+  .bottom-bar { padding-top: 14px; }
+}
+@media (max-width: 560px) {
+  .brand-name { font-size: 17px; }
+  .top-actions { gap: 6px; }
+  .top-actions .btn { padding: 0 12px; }
+  .top-actions .btn-soft .btn-label { display: none; }
+  .canvas-hint { display: none; }
+  .editor-heading > .btn { font-size: 0; padding: 0; width: 40px; gap: 0; flex-shrink: 0; }
+  .bottom-bar { flex-direction: column; align-items: stretch; gap: 12px; }
   .sample-control { width: 100%; justify-content: space-between; }
-  .sample-control input { flex: 1; }
+  .sample-control input { flex: 1; width: auto; }
+  .drive-modal { padding: 18px; border-radius: 14px; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions .btn { width: 100%; height: 44px; }
+  .status-toast { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: calc(100vw - 24px); }
+  .drop-overlay { inset: 8px; }
+}
+@media (max-width: 380px) {
+  .top-actions .btn-dark .btn-label { display: none; }
+  .two-col { gap: 8px; }
+}
+@media (pointer: coarse) {
+  .btn { height: 44px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .control, .number-control, .color-control, .sample-control input { height: 44px; }
+  .control, .number-control input, .sample-control input { font-size: 16px; }
+  .textarea { height: 80px; }
+  .style-tools button { width: 42px; height: 42px; }
+  .layer-select { padding-top: 12px; padding-bottom: 12px; }
+  .layer-remove { width: 40px; height: 40px; }
+  .side-tabs button { padding: 18px 6px 16px; }
+  .handle { width: 18px; height: 18px; border-radius: 4px; }
+  .handle::after { inset: -12px; }
+  .selection-tag { font-size: 12px; padding: 4px 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

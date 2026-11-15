@@ -439,8 +439,8 @@ function App() {
           <div className="brand-name">CertiFlow</div>
         </div>
         <div className="top-actions">
-          <button className="btn btn-soft" onClick={() => setShowDrive(true)}><CloudUpload size={16} /> Google Drive</button>
-          <button className="btn btn-dark" disabled={generating} onClick={() => generate(false)}><Download size={16} /> Generate PDFs</button>
+          <button className="btn btn-soft" onClick={() => setShowDrive(true)}><CloudUpload size={16} /> <span className="btn-label">Google Drive</span></button>
+          <button className="btn btn-dark" disabled={generating} onClick={() => generate(false)}><Download size={16} /> <span className="btn-label">Generate PDFs</span></button>
         </div>
       </header>
 
