@@ -9,7 +9,9 @@ A light-mode certificate editor and bulk PDF generator built with React + Vite.
 - Use `{{name}}` and `{{email}}` placeholders in any text layer.
 - Import participant data from `.xlsx`, `.xls` or `.csv` files and map the name and email columns.
 - Generate one PDF per participant and download all PDFs in a ZIP. Files are named `Participant Name.pdf`.
-- Optionally upload each generated PDF to a Google Drive folder.
+- Search generated certificates by filename or participant data; preview PDFs, edit an individual certificate's text, download it again, or remove it from browser history.
+- Apply common text-colour or size-scale changes to all saved certificates at once; each PDF is regenerated locally.
+- Keep generated PDFs and their editable design data in browser-only IndexedDB history; no CertiFlow database is used.
 - Add TTF/OTF font files for the current browser session. Custom TTF/OTF fonts are embedded in generated PDFs.
 
 ## Run locally
@@ -30,20 +32,6 @@ npm run build
 npm run preview
 ```
 
-## Google Drive setup
-
-Google Drive upload is optional. ZIP download works without Google configuration.
-
-1. Open [Google Cloud Console Credentials](https://console.cloud.google.com/apis/credentials) and select or create a project.
-2. Enable the **Google Drive API** for that project.
-3. Configure the OAuth consent screen. Add your Google account as a test user while the app is in testing mode.
-4. Create an OAuth Client ID with application type **Web application**.
-5. Add the app's exact origin to **Authorised JavaScript origins**. For local development, use `http://localhost:5173`. For deployment, add your deployed HTTPS origin.
-6. In CertiFlow, open **Google Drive**, paste the OAuth Client ID and the destination folder URL, then choose **Generate & upload**.
-7. Sign in and grant the `drive.file` permission when Google asks.
-
-The app uploads PDFs directly from the browser to the selected folder using Google's Drive API. No Google client secret is needed or should be placed in frontend code. The OAuth Client ID is saved in this browser's local storage. Access tokens remain in memory for the current page session.
-
 ## Spreadsheet format
 
 The first worksheet is used. The first row must contain column headers. For example:
@@ -59,9 +47,11 @@ Choose the column containing participant names in the Participants tab. The emai
 
 - The font dropdown includes common system fonts and Google Fonts used by the interface. For consistent output, upload a TTF or OTF font file and select it for the layer.
 - Custom font files are embedded in the generated PDFs. Browser-only font selections may fall back to Helvetica in PDF output because the PDF generator cannot read arbitrary fonts installed on the operating system.
-- For best output, use PNG or JPG templates. WEBP templates are converted to PNG in the browser before PDF export.
+- The PDF keeps text as vector content and embeds the template image at its original resolution. To improve a soft or pixelated background, use the original artwork as a lossless PNG or high-quality JPG; avoid screenshots, thumbnails, and images shared through compression-heavy messaging apps. For print, use artwork sized for the final print dimensions at 300 DPI (for example, about 3508 × 2480 px for A4 landscape).
+- WEBP templates are converted to PNG in the browser before PDF export. Converting a low-resolution image to PNG does not restore missing detail.
 - Position values are percentages of the original template dimensions, so placement remains consistent across preview and PDF export.
-- All processing happens in the browser. Participant spreadsheets and generated PDFs are not sent to a CertiFlow server. When Drive upload is selected, PDFs are sent directly to Google Drive using the signed-in user's access token.
+- All processing happens in the browser. Participant spreadsheets and generated PDFs are not sent to a CertiFlow server.
+- Browser history is stored in IndexedDB on this device. Clearing site data or using a different browser/device removes or hides that history; download or upload certificates you need to keep.
 
 ## Project structure
 

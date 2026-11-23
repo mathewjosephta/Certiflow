@@ -1,9 +1,9 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Upload, FileSpreadsheet, FileImage, Download, CloudUpload, Type, Settings2, ChevronDown, Plus, Trash2,
-  AlignLeft, AlignCenter, AlignRight, Bold, Italic, Check, Link2, Users, FileCheck2, MousePointer2, X,
-  FolderOpen, LoaderCircle,
+  Upload, FileSpreadsheet, FileImage, Download, Type, Settings2, ChevronDown, Plus, Trash2,
+  AlignLeft, AlignCenter, AlignRight, Bold, Italic, Check, Users, FileCheck2, MousePointer2, X,
+  LoaderCircle, Search, SlidersHorizontal,
 } from 'lucide-react';
 import './styles.css';
 
@@ -26,10 +26,77 @@ const newField = (o = {}) => ({
   color: '#252525', font: 'Times Roman', bold: false, italic: false, align: 'center', ...o,
 });
 const cleanName = (s) => String(s || 'Participant').trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'Participant';
-const driveFolderId = (url) => String(url).match(/folders\/([\w-]+)/)?.[1] || String(url).trim().match(/^[\w-]{15,}$/)?.[0] || '';
-const safeStore = {
-  get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+const HISTORY_DB = 'certiflow-history';
+const HISTORY_VERSION = 1;
+const openHistoryDb = () => new Promise((resolve, reject) => {
+  const request = indexedDB.open(HISTORY_DB, HISTORY_VERSION);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    if (!db.objectStoreNames.contains('certificates')) db.createObjectStore('certificates', { keyPath: 'id' });
+    if (!db.objectStoreNames.contains('designs')) db.createObjectStore('designs', { keyPath: 'id' });
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error || new Error('Could not open certificate history.'));
+});
+const readHistory = async () => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('certificates', 'readonly').objectStore('certificates').getAll();
+    request.onsuccess = () => resolve(request.result.sort((a, b) => b.createdAt - a.createdAt));
+    request.onerror = () => reject(request.error || new Error('Could not read certificate history.'));
+    request.transaction.oncomplete = () => db.close();
+  });
+};
+const saveDesign = async (design) => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('designs', 'readwrite');
+    tx.objectStore('designs').put(design);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not save certificate design for editing.')); };
+  });
+};
+const saveCertificate = async (certificate) => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('certificates', 'readwrite');
+    tx.objectStore('certificates').put(certificate);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not save certificate to browser history.')); };
+  });
+};
+const saveBulkChanges = async (designs, certificates) => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['designs', 'certificates'], 'readwrite');
+    designs.forEach((design) => tx.objectStore('designs').put(design));
+    certificates.forEach((certificate) => tx.objectStore('certificates').put(certificate));
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not save the updated certificates to browser history.')); };
+  });
+};
+const readDesign = async (id) => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction('designs', 'readonly').objectStore('designs').get(id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not read certificate design.'));
+    request.transaction.oncomplete = () => db.close();
+  });
+};
+const removeCertificate = async (id, designId) => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['certificates', 'designs'], 'readwrite');
+    const certificates = tx.objectStore('certificates');
+    certificates.delete(id);
+    const all = certificates.getAll();
+    all.onsuccess = () => {
+      if (!all.result.some((item) => item.designId === designId)) tx.objectStore('designs').delete(designId);
+    };
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not delete certificate from browser history.')); };
+  });
 };
 const fontCss = (name) => BUILTIN_FONTS[name]?.css || `'${name}', sans-serif`;
 const fieldText = (f, person, nameCol, emailCol, sample) =>
@@ -82,7 +149,7 @@ async function preparePdf({ template, fields, fontFiles }) {
   return { pdfLib, fontkit, base, template, fields, fontBytes };
 }
 
-async function renderPdf(ctx, person, cols) {
+async function renderPdf(ctx, person, cols, overrides = {}) {
   const { PDFDocument, StandardFonts, rgb } = ctx.pdfLib;
   const { width: W, height: H } = ctx.template;
   const pdf = await PDFDocument.create();
@@ -107,7 +174,7 @@ async function renderPdf(ctx, person, cols) {
     const font = await getFont(f);
     const h = f.color.replace('#', '');
     const color = rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255);
-    const lines = fieldText(f, person, cols.name, cols.email).split('\n');
+    const lines = String(overrides[f.id] ?? fieldText(f, person, cols.name, cols.email)).split('\n');
     const size = Number(f.size), lh = size * LINE_HEIGHT;
     const top = H - f.y * H + (lines.length * lh) / 2;
     lines.forEach((line, i) => {
@@ -121,30 +188,6 @@ async function renderPdf(ctx, person, cols) {
     });
   }
   return pdf.save();
-}
-
-/* ---------- Google Drive ---------- */
-
-const loadGsi = () =>
-  window.google?.accounts?.oauth2
-    ? Promise.resolve()
-    : new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://accounts.google.com/gsi/client';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('Could not load Google sign-in. Check your connection.'));
-        document.head.appendChild(s);
-      });
-
-async function uploadDrive(token, folderId, name, bytes) {
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify({ name, mimeType: 'application/pdf', parents: [folderId] })], { type: 'application/json' }));
-  form.append('file', new Blob([bytes], { type: 'application/pdf' }));
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-    method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
-  });
-  if (res.status === 401) throw new Error('Your Google session expired. Start the upload again to sign in.');
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error?.message || `Google Drive upload failed (${res.status}).`);
 }
 
 /* ---------- Canvas text layer ---------- */
@@ -188,29 +231,47 @@ function App() {
   const [emailColumn, setEmailColumn] = useState('');
   const [sheetName, setSheetName] = useState('');
   const [sampleName, setSampleName] = useState('Alex Johnson');
-  const [clientId, setClientId] = useState(() => safeStore.get('cf-google-client'));
-  const [driveUrl, setDriveUrl] = useState('');
   const [fontFiles, setFontFiles] = useState({});
+  const [history, setHistory] = useState([]);
+  const [historySearch, setHistorySearch] = useState('');
+  const [showBulkStyle, setShowBulkStyle] = useState(false);
+  const [bulkColorEnabled, setBulkColorEnabled] = useState(false);
+  const [bulkColor, setBulkColor] = useState('#252525');
+  const [bulkBoldMode, setBulkBoldMode] = useState('keep');
+  const [bulkSizeEnabled, setBulkSizeEnabled] = useState(false);
+  const [bulkSizeScale, setBulkSizeScale] = useState(100);
+  const [activeCertificate, setActiveCertificate] = useState(null);
+  const [activeDesign, setActiveDesign] = useState(null);
+  const [activeOverrides, setActiveOverrides] = useState({});
+  const [historyMode, setHistoryMode] = useState('preview');
+  const [previewUrl, setPreviewUrl] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [dragging, setDragging] = useState(null);
   const [guides, setGuides] = useState({ v: false, h: false });
   const [dropActive, setDropActive] = useState(false);
-  const [showDrive, setShowDrive] = useState(false);
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
-  const tokenRef = useRef({ value: '', exp: 0 });
   const fileInput = useRef(null), sheetInput = useRef(null), fontInput = useRef(null);
   const field = fields.find((f) => f.id === selected);
   const fontNames = [...Object.keys(BUILTIN_FONTS), ...Object.keys(fontFiles)];
 
-  useEffect(() => { if (showDrive) loadGsi().catch(() => {}); }, [showDrive]);
   useEffect(() => {
-    if (!status || generating) return;
+    readHistory().then(setHistory).catch((e) => setStatus(e.message || 'Could not load browser certificate history.'));
+  }, []);
+  useEffect(() => {
+    if (!activeCertificate) { setPreviewUrl(''); return undefined; }
+    const url = URL.createObjectURL(activeCertificate.pdf);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [activeCertificate]);
+  useEffect(() => {
+    if (!status || generating || savingEdit) return;
     const t = setTimeout(() => setStatus(''), 6000);
     return () => clearTimeout(t);
-  }, [status, generating]);
+  }, [status, generating, savingEdit]);
 
   const fieldsRef = useRef(fields); fieldsRef.current = fields;
   const selectedRef = useRef(selected); selectedRef.current = selected;
@@ -285,7 +346,6 @@ function App() {
 
   /* Keyboard: arrows nudge (Shift = bigger step), Delete removes, Escape deselects */
   useEffect(() => {
-    if (showDrive) return;
     const onKey = (e) => {
       if (e.target.closest?.('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
       const id = selectedRef.current;
@@ -303,7 +363,7 @@ function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showDrive, removeField, showGuides]);
+  }, [removeField, showGuides]);
 
   /* Drag and drop files anywhere on the page: images become the template, sheets the participant list */
   useEffect(() => {
@@ -366,37 +426,142 @@ function App() {
 
   handlers.current = { onTemplate, onSheet, onFont };
 
-  /* Google token (cached until expiry) */
-  const getToken = async () => {
-    const t = tokenRef.current;
-    if (t.value && Date.now() < t.exp) return t.value;
-    if (!clientId.trim()) throw new Error('Enter your Google OAuth client ID first.');
-    await loadGsi();
-    return new Promise((resolve, reject) => {
-      window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId.trim(),
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (r) => {
-          if (r.error) return reject(new Error(`Google sign-in failed: ${r.error}`));
-          tokenRef.current = { value: r.access_token, exp: Date.now() + (r.expires_in - 60) * 1000 };
-          resolve(r.access_token);
-        },
-        error_callback: () => reject(new Error('Google sign-in was closed or blocked.')),
-      }).requestAccessToken();
+  const generateSingle = async (certificate, design, overrides) => {
+    const fontFilesForDesign = Object.fromEntries(
+      design.fonts.map(([name, bytes]) => [name, new Blob([bytes])]),
+    );
+    const ctx = await preparePdf({
+      template: design.template,
+      fields: design.fields,
+      fontFiles: fontFilesForDesign,
     });
+    const bytes = await renderPdf(ctx, certificate.person, certificate.columns, overrides);
+    return new Blob([bytes], { type: 'application/pdf' });
   };
 
-  const generate = async (toDrive = false) => {
+  const editCertificate = async (certificate) => {
+    try {
+      const design = await readDesign(certificate.designId);
+      if (!design) throw new Error('The saved design for this certificate is missing from browser history.');
+      const values = Object.fromEntries(design.fields.map((f) => [
+        f.id,
+        certificate.overrides?.[f.id] ?? fieldText(f, certificate.person, certificate.columns.name, certificate.columns.email),
+      ]));
+      setActiveCertificate(certificate);
+      setActiveDesign(design);
+      setActiveOverrides(values);
+      setHistoryMode('edit');
+    } catch (e) {
+      setStatus(e.message || 'Could not open this certificate for editing.');
+    }
+  };
+
+  const saveEditedCertificate = async () => {
+    if (!activeCertificate || !activeDesign) return;
+    setSavingEdit(true);
+    try {
+      const pdf = await generateSingle(activeCertificate, activeDesign, activeOverrides);
+      const updated = { ...activeCertificate, pdf, overrides: activeOverrides, modifiedAt: Date.now() };
+      await saveCertificate(updated);
+      setHistory((items) => items.map((item) => item.id === updated.id ? updated : item));
+      setActiveCertificate(updated);
+      setHistoryMode('preview');
+      setStatus(`${updated.name} updated and saved in this browser.`);
+    } catch (e) {
+      setStatus(e.message || 'Could not update this certificate.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const deleteCertificate = async (certificate) => {
+    if (!window.confirm(`Delete ${certificate.name} from this browser's history?`)) return;
+    try {
+      await removeCertificate(certificate.id, certificate.designId);
+      setHistory((items) => items.filter((item) => item.id !== certificate.id));
+      if (activeCertificate?.id === certificate.id) setActiveCertificate(null);
+      setStatus(`${certificate.name} removed from browser history.`);
+    } catch (e) {
+      setStatus(e.message || 'Could not delete this certificate.');
+    }
+  };
+
+  const downloadCertificate = async (certificate) => {
+    try {
+      const { saveAs } = await import('file-saver');
+      saveAs(certificate.pdf, certificate.name);
+    } catch (e) {
+      setStatus(e.message || 'Could not download this certificate.');
+    }
+  };
+
+  const applyBulkStyles = async () => {
+    if (!bulkColorEnabled && !bulkSizeEnabled) {
+      setStatus('Choose a common style change first.');
+      return;
+    }
+    if (bulkSizeEnabled && (!Number.isFinite(Number(bulkSizeScale)) || Number(bulkSizeScale) < 25 || Number(bulkSizeScale) > 200)) {
+      setStatus('Text size scale must be between 25% and 200%.');
+      return;
+    }
+    setGenerating(true);
+    setProgress(0);
+    setStatus('Preparing to update saved certificates…');
+    try {
+      const designIds = [...new Set(history.map((certificate) => certificate.designId))];
+      const designs = await Promise.all(designIds.map((id) => readDesign(id)));
+      if (designs.some((design) => !design)) {
+        throw new Error('Some certificates are missing their saved design, so the batch edit was stopped.');
+      }
+      const updatedDesigns = designs.map((design) => ({
+        ...design,
+        fields: design.fields.map((field) => ({
+          ...field,
+          ...(bulkColorEnabled ? { color: bulkColor } : {}),
+          ...(bulkSizeEnabled ? { size: clamp(Math.round(field.size * Number(bulkSizeScale) / 100), 6, 300) } : {}),
+        })),
+      }));
+      const designsById = new Map(updatedDesigns.map((design) => [design.id, design]));
+      const updatedCertificates = [];
+      for (let i = 0; i < history.length; i++) {
+        const certificate = history[i];
+        const pdf = await generateSingle(certificate, designsById.get(certificate.designId), certificate.overrides || {});
+        updatedCertificates.push({ ...certificate, pdf, modifiedAt: Date.now() });
+        setProgress(Math.round(((i + 1) / history.length) * 100));
+        setStatus(`Updating saved certificates ${i + 1} of ${history.length}`);
+        await nextTick();
+      }
+      await saveBulkChanges(updatedDesigns, updatedCertificates);
+      setHistory((items) => items.map((item) => updatedCertificates.find((updated) => updated.id === item.id) || item));
+      setShowBulkStyle(false);
+      setStatus(`Updated all ${updatedCertificates.length} saved certificate PDFs in this browser.`);
+    } catch (e) {
+      setStatus(e.message || 'Could not update the saved certificates.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const generate = async () => {
     if (!template) return setStatus('Upload a certificate template first.');
     if (!participants.length || !nameColumn) return setStatus('Upload a participant list and choose the name column.');
-    const folderId = driveFolderId(driveUrl);
-    if (toDrive && !folderId) { setStatus('Paste a valid Google Drive folder link.'); return setShowDrive(true); }
-    setGenerating(true); setProgress(0); setStatus(toDrive ? 'Connecting to Google Drive…' : 'Preparing certificates…');
+    setGenerating(true); setProgress(0); setStatus('Preparing certificates…');
     try {
-      const token = toDrive ? await getToken() : null; // first await keeps the click gesture for the sign-in popup
       const ctx = await preparePdf({ template, fields, fontFiles });
       const cols = { name: nameColumn, email: emailColumn };
-      const zip = toDrive ? null : new (await import('jszip')).default();
+      const designId = uid();
+      let historyError = '';
+      try {
+        await saveDesign({
+          id: designId,
+          template: { kind: template.kind, width: template.width, height: template.height, bytes: template.bytes },
+          fields,
+          fonts: await Promise.all(Object.entries(fontFiles).map(async ([name, file]) => [name, await file.arrayBuffer()])),
+        });
+      } catch (e) {
+        historyError = e.message || 'Browser history could not be saved.';
+      }
+      const zip = new (await import('jszip')).default();
       const used = new Set();
       const names = participants.map((p, i) => {
         const base = cleanName(p[nameColumn]);
@@ -410,26 +575,45 @@ function App() {
         while (next < participants.length) {
           const i = next++;
           const bytes = await renderPdf(ctx, participants[i], cols);
-          if (toDrive) await uploadDrive(token, folderId, names[i], bytes); else zip.file(names[i], bytes);
+          zip.file(names[i], bytes);
+          if (!historyError) {
+            try {
+              const certificate = {
+                id: uid(), designId, name: names[i], person: participants[i], columns: cols,
+                pdf: new Blob([bytes], { type: 'application/pdf' }), overrides: {}, createdAt: Date.now(),
+              };
+              await saveCertificate(certificate);
+              setHistory((items) => [certificate, ...items]);
+            } catch (e) {
+              historyError = e.message || 'Browser history could not be saved.';
+            }
+          }
           done++;
           setProgress(Math.round((done / participants.length) * 100));
-          setStatus(`${toDrive ? 'Uploading' : 'Generating'} ${done} of ${participants.length}`);
+          setStatus(`Generating ${done} of ${participants.length}`);
           await nextTick(); // let the progress bar paint
         }
       };
-      await Promise.all(Array.from({ length: toDrive ? 3 : 1 }, worker));
-      if (toDrive) setStatus(`Done. ${participants.length} certificates uploaded to Google Drive.`);
-      else {
-        const [{ saveAs }, blob] = await Promise.all([import('file-saver'), zip.generateAsync({ type: 'blob', compression: 'STORE' })]);
-        saveAs(blob, 'certificates.zip');
-        setStatus(`Done. ${participants.length} certificates saved as certificates.zip.`);
-      }
+      await worker();
+      const [{ saveAs }, blob] = await Promise.all([import('file-saver'), zip.generateAsync({ type: 'blob', compression: 'STORE' })]);
+      saveAs(blob, 'certificates.zip');
+      setStatus(`Done. ${participants.length} certificates saved as certificates.zip.${historyError ? ` Browser history warning: ${historyError}` : ''}`);
     } catch (e) { setStatus(e.message || 'Something went wrong. Try again.'); }
     finally { setGenerating(false); }
   };
 
   const preview = (f) => fieldText(f, null, nameColumn, emailColumn, sampleName);
   const ready = participants.length > 0 && !generating;
+  const visibleHistory = history.filter((certificate) => {
+    const search = historySearch.trim().toLocaleLowerCase();
+    if (!search) return true;
+    const details = [
+      certificate.name,
+      ...Object.values(certificate.person || {}).map(String),
+      ...Object.values(certificate.overrides || {}),
+    ].join(' ').toLocaleLowerCase();
+    return details.includes(search);
+  });
 
   return (
     <div className="app-shell">
@@ -439,8 +623,7 @@ function App() {
           <div className="brand-name">CertiFlow</div>
         </div>
         <div className="top-actions">
-          <button className="btn btn-soft" onClick={() => setShowDrive(true)}><CloudUpload size={16} /> <span className="btn-label">Google Drive</span></button>
-          <button className="btn btn-dark" disabled={generating} onClick={() => generate(false)}><Download size={16} /> <span className="btn-label">Generate PDFs</span></button>
+          <button className="btn btn-dark" disabled={generating} onClick={generate}><Download size={16} /> <span className="btn-label">Generate PDFs</span></button>
         </div>
       </header>
 
@@ -497,6 +680,7 @@ function App() {
           <div className="side-tabs" role="tablist">
             <button role="tab" aria-selected={tab === 'style'} className={tab === 'style' ? 'active' : ''} onClick={() => setTab('style')}><Settings2 size={16} /> Design</button>
             <button role="tab" aria-selected={tab === 'data'} className={tab === 'data' ? 'active' : ''} onClick={() => setTab('data')}><Users size={16} /> Participants</button>
+            <button role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}><FileCheck2 size={16} /> Certificates{history.length ? ` (${history.length})` : ''}</button>
           </div>
 
           {tab === 'style' ? (
@@ -580,7 +764,7 @@ function App() {
                 <p className="empty-hint">{fields.length ? 'Select a text layer on the template or from the list to edit it.' : 'No text layers yet. Use the + button to add one.'}</p>
               )}
             </div>
-          ) : (
+          ) : tab === 'data' ? (
             <div className="panel-content">
               <h2>Participant data</h2>
               <p className="panel-desc">Import an Excel or CSV file. Each row becomes one PDF.</p>
@@ -617,8 +801,39 @@ function App() {
               )}
 
               <div className="data-tip"><strong>Spreadsheet tip</strong><p>Put headers in the first row, such as Name and Email. Only the first sheet is read.</p></div>
-              <button className="btn btn-dark full-btn" disabled={!ready} onClick={() => generate(false)}><Download size={16} /> Download ZIP</button>
-              <button className="btn btn-drive full-btn" disabled={!ready} onClick={() => setShowDrive(true)}><CloudUpload size={16} /> Upload to Google Drive</button>
+              <button className="btn btn-dark full-btn" disabled={!ready} onClick={generate}><Download size={16} /> Download ZIP</button>
+            </div>
+          ) : (
+            <div className="panel-content">
+              <div className="panel-title-row">
+                <h2>Certificates</h2>
+                <button className="btn btn-outline history-batch-btn" disabled={!history.length || generating} onClick={() => setShowBulkStyle(true)}><SlidersHorizontal size={14} /> Batch edit</button>
+              </div>
+              <p className="panel-desc">Your history is saved only in this browser.</p>
+              <label className="history-search">
+                <Search size={16} aria-hidden="true" />
+                <input aria-label="Search generated certificates" placeholder="Search name or participant details" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} />
+              </label>
+              {history.length ? (
+                visibleHistory.length ? <div className="certificate-history">
+                  {visibleHistory.map((certificate) => (
+                    <div className="history-item" key={certificate.id}>
+                      <div className="history-meta">
+                        <strong title={certificate.name}>{certificate.name}</strong>
+                        <span>{new Date(certificate.modifiedAt || certificate.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div className="history-actions">
+                        <button className="btn btn-outline" onClick={() => { setActiveCertificate(certificate); setHistoryMode('preview'); setActiveDesign(null); }}>Preview</button>
+                        <button className="btn btn-outline" onClick={() => editCertificate(certificate)}>Edit</button>
+                        <button className="icon-btn" aria-label={`Download ${certificate.name}`} title="Download PDF" onClick={() => downloadCertificate(certificate)}><Download size={15} /></button>
+                        <button className="icon-btn history-delete" aria-label={`Delete ${certificate.name}`} title="Delete from browser history" onClick={() => deleteCertificate(certificate)}><Trash2 size={15} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div> : <p className="empty-hint">No certificates match “{historySearch}”.</p>
+              ) : (
+                <p className="empty-hint">No certificates yet. Generate a batch and it will appear here for preview, editing, and download.</p>
+              )}
             </div>
           )}
         </aside>
@@ -638,26 +853,70 @@ function App() {
       )}
       {generating && <div className="progress-line"><span style={{ width: `${progress}%` }} /></div>}
 
-      {showDrive && (
-        <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowDrive(false); }}>
-          <div className="drive-modal" role="dialog" aria-modal="true" aria-labelledby="drive-title">
+      {activeCertificate && (
+        <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !savingEdit) setActiveCertificate(null); }}>
+          <div className="certificate-modal" role="dialog" aria-modal="true" aria-labelledby="certificate-title">
             <div className="modal-head">
-              <div className="drive-modal-icon"><CloudUpload size={20} /></div>
-              <button className="icon-btn" aria-label="Close" onClick={() => setShowDrive(false)}><X size={18} /></button>
+              <div>
+                <h2 id="certificate-title">{historyMode === 'edit' ? 'Edit certificate' : activeCertificate.name}</h2>
+                <p>{historyMode === 'edit' ? 'Change this participant’s text, then regenerate the saved PDF.' : 'PDF preview'}</p>
+              </div>
+              <button className="icon-btn" aria-label="Close preview" onClick={() => setActiveCertificate(null)}><X size={18} /></button>
             </div>
-            <h2 id="drive-title">Upload to Google Drive</h2>
-            <p>Each certificate is saved as a PDF in the folder you choose.</p>
-            <label className="field-label" htmlFor="cid">Google OAuth client ID</label>
-            <input id="cid" className="control" placeholder="xxxx.apps.googleusercontent.com" value={clientId} onChange={(e) => { setClientId(e.target.value); safeStore.set('cf-google-client', e.target.value); }} />
-            <div className="helper">Create a Web application client in Google Cloud Console, enable the Drive API and add this site’s address as an authorised JavaScript origin.</div>
-            <label className="field-label" htmlFor="durl">Drive folder link</label>
-            <input id="durl" className="control" placeholder="https://drive.google.com/drive/folders/…" value={driveUrl} onChange={(e) => setDriveUrl(e.target.value)} />
-            <div className="drive-note"><FolderOpen size={16} /><span>Files are named <b>Participant Name.pdf</b>. Existing files with the same name are not replaced.</span></div>
+            {historyMode === 'edit' && activeDesign && (
+              <div className="certificate-edit-fields">
+                {activeDesign.fields.map((f) => (
+                  <label key={f.id}>
+                    <span>{f.label}</span>
+                    <textarea className="control textarea" value={activeOverrides[f.id] ?? ''} onChange={(e) => setActiveOverrides((values) => ({ ...values, [f.id]: e.target.value }))} />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {previewUrl && <iframe className="certificate-pdf" title={`Preview of ${activeCertificate.name}`} src={previewUrl} />}
             <div className="modal-actions">
-              <button className="btn btn-soft" onClick={() => setShowDrive(false)}>Cancel</button>
-              <button className="btn btn-dark" disabled={generating} onClick={() => { setShowDrive(false); generate(true); }}><CloudUpload size={16} /> Generate and upload</button>
+              {historyMode === 'edit' ? (
+                <>
+                  <button className="btn btn-soft" disabled={savingEdit} onClick={() => setHistoryMode('preview')}>Cancel edits</button>
+                  <button className="btn btn-dark" disabled={savingEdit} onClick={saveEditedCertificate}>{savingEdit ? 'Saving…' : 'Save changes'}</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-soft" onClick={() => downloadCertificate(activeCertificate)}><Download size={16} /> Download PDF</button>
+                  <button className="btn btn-dark" onClick={() => editCertificate(activeCertificate)}><Type size={16} /> Edit text</button>
+                </>
+              )}
             </div>
-            <a className="setup-link" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer"><Link2 size={13} /> Open Google Cloud credentials</a>
+          </div>
+        </div>
+      )}
+
+      {showBulkStyle && (
+        <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && !generating) setShowBulkStyle(false); }}>
+          <div className="bulk-style-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-style-title">
+            <div className="modal-head">
+              <div>
+                <h2 id="bulk-style-title">Edit all saved certificates</h2>
+                <p>These changes regenerate all {history.length} browser-stored PDFs.</p>
+              </div>
+              <button className="icon-btn" aria-label="Close batch editor" disabled={generating} onClick={() => setShowBulkStyle(false)}><X size={18} /></button>
+            </div>
+            <label className="bulk-style-option">
+              <input type="checkbox" checked={bulkColorEnabled} onChange={(e) => setBulkColorEnabled(e.target.checked)} />
+              <span>Set text colour on all text layers</span>
+              <input aria-label="Batch text colour" type="color" value={bulkColor} disabled={!bulkColorEnabled || generating} onChange={(e) => setBulkColor(e.target.value)} />
+            </label>
+            <label className="bulk-style-option">
+              <input type="checkbox" checked={bulkSizeEnabled} onChange={(e) => setBulkSizeEnabled(e.target.checked)} />
+              <span>Scale all text sizes</span>
+              <div className="number-control"><input aria-label="Text size scale" type="number" min="25" max="200" value={bulkSizeScale} disabled={!bulkSizeEnabled || generating} onChange={(e) => setBulkSizeScale(e.target.value)} /><span>%</span></div>
+            </label>
+            <p className="helper">Text overrides and participant names are preserved. Scaling keeps the original size differences between text layers.</p>
+            <div className="modal-actions">
+              <button className="btn btn-soft" disabled={generating} onClick={() => setShowBulkStyle(false)}>Cancel</button>
+              <button className="btn btn-dark" disabled={generating || (!bulkColorEnabled && !bulkSizeEnabled)} onClick={applyBulkStyles}>{generating ? 'Updating…' : 'Apply to all certificates'}</button>
+            </div>
           </div>
         </div>
       )}
