@@ -98,6 +98,16 @@ const removeCertificate = async (id, designId) => {
     tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not delete certificate from browser history.')); };
   });
 };
+const clearCertificateHistory = async () => {
+  const db = await openHistoryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['certificates', 'designs'], 'readwrite');
+    tx.objectStore('certificates').clear();
+    tx.objectStore('designs').clear();
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('Could not clear certificate history.')); };
+  });
+};
 const fontCss = (name) => BUILTIN_FONTS[name]?.css || `'${name}', sans-serif`;
 const fieldText = (f, person, nameCol, emailCol, sample) =>
   f.text
@@ -537,6 +547,21 @@ function App() {
     }
   };
 
+  const deleteAllCertificates = async () => {
+    if (!history.length || generating || savingEdit) return;
+    if (!window.confirm(`Permanently delete all ${history.length} certificates from this browser's history? This cannot be undone.`)) return;
+    try {
+      await clearCertificateHistory();
+      setHistory([]);
+      setHistorySearch('');
+      setActiveCertificate(null);
+      setActiveDesign(null);
+      setStatus('All generated certificates were deleted from this browser.');
+    } catch (e) {
+      setStatus(e.message || 'Could not clear certificate history.');
+    }
+  };
+
   const downloadCertificate = async (certificate) => {
     try {
       const { saveAs } = await import('file-saver');
@@ -917,7 +942,10 @@ function App() {
             <div className="panel-content">
               <div className="panel-title-row">
                 <h2>Certificates</h2>
-                <button className="btn btn-outline history-batch-btn" disabled={!history.length || generating} onClick={() => setShowBulkStyle(true)}><SlidersHorizontal size={14} /> Batch edit</button>
+                <div className="history-header-actions">
+                  <button className="btn btn-outline history-batch-btn" disabled={!history.length || generating || savingEdit} onClick={() => setShowBulkStyle(true)}><SlidersHorizontal size={14} /> Batch edit</button>
+                  <button className="btn btn-danger-outline" disabled={!history.length || generating || savingEdit} onClick={deleteAllCertificates}><Trash2 size={14} /> Delete all</button>
+                </div>
               </div>
               <p className="panel-desc">Your history is saved only in this browser.</p>
               <label className="history-search">

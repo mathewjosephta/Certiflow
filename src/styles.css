@@ -307,7 +307,11 @@ h1, h2, h3, p { margin: 0; }
 .history-search { display: flex; align-items: center; gap: 9px; height: 40px; margin-bottom: 12px; padding: 0 11px; border: 1px solid #d9dce3; border-radius: 8px; color: var(--muted); }
 .history-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px #3347c91f; }
 .history-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: none; font-size: 13px; }
-.history-batch-btn { height: 32px; padding: 0 9px; font-size: 12px; }
+.history-header-actions { display: flex; gap: 6px; }
+.history-batch-btn, .btn-danger-outline { height: 32px; padding: 0 8px; font-size: 12px; }
+.btn-danger-outline { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #efcaca; border-radius: 9px; background: #fff6f6; color: var(--danger); font-weight: 600; white-space: nowrap; }
+.btn-danger-outline:hover:not(:disabled) { background: #fdeeee; }
+.btn-danger-outline:disabled { opacity: .45; cursor: not-allowed; }
 .certificate-modal { width: min(940px, 100%); max-height: calc(100dvh - 40px); overflow: auto; background: var(--surface); border-radius: 16px; padding: 22px; box-shadow: 0 20px 60px #11182740; }
 .certificate-modal .modal-head > div { min-width: 0; }
 .certificate-modal h2 { font-size: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

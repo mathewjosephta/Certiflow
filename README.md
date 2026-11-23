@@ -10,7 +10,7 @@ A light-mode certificate editor and bulk PDF generator built with React + Vite.
 - Use `{{name}}` and `{{email}}` placeholders in any text layer.
 - Import participant data from `.xlsx`, `.xls` or `.csv` files and map the name and email columns.
 - Generate one PDF per participant and download all PDFs in a ZIP. Files are named `Participant Name.pdf`.
-- Search generated certificates by filename or participant data; preview PDFs, edit an individual certificate's text, download it again, or remove it from browser history.
+- Search generated certificates by filename or participant data; preview PDFs, edit an individual certificate's text, download it again, remove one certificate, or clear all browser history.
 - Apply common text-colour or size-scale changes to all saved certificates at once; each PDF is regenerated locally.
 - Keep generated PDFs and their editable design data in browser-only IndexedDB history; no CertiFlow database is used.
 - Add TTF/OTF font files for the current browser session. Custom TTF/OTF fonts are embedded in generated PDFs.
