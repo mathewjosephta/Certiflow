@@ -6,6 +6,7 @@ A light-mode certificate editor and bulk PDF generator built with React + Vite.
 
 - Upload a PNG, JPG or WEBP certificate background.
 - Add multiple text layers, drag them directly on the preview, and edit their content, position, font family, size, colour, weight, italic style and alignment.
+- Start in a mouse-, touch-, and keyboard-rotatable 3D preview. The reverse side shows “Website developed by” and “Mathew Joseph T A”; clicking a text layer switches to 2D editing. The preview is visual only; exported certificates remain flat PDFs.
 - Use `{{name}}` and `{{email}}` placeholders in any text layer.
 - Import participant data from `.xlsx`, `.xls` or `.csv` files and map the name and email columns.
 - Generate one PDF per participant and download all PDFs in a ZIP. Files are named `Participant Name.pdf`.

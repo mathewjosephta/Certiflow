@@ -63,6 +63,8 @@ h1, h2, h3, p { margin: 0; }
 /* Canvas */
 .canvas-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
 .canvas-label, .canvas-hint { display: flex; align-items: center; gap: 7px; }
+.canvas-toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.preview-mode-btn, .preview-reset { height: 30px; padding: 0 10px; font-size: 12px; }
 .canvas-label { font-weight: 600; color: var(--ink-2); }
 .canvas-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .canvas-stage {
@@ -75,6 +77,38 @@ h1, h2, h3, p { margin: 0; }
   aspect-ratio: var(--ar); width: min(100%, calc((100dvh - 300px) * var(--ar)));
   box-shadow: 0 10px 30px #1b1e252b;
 }
+.certificate-3d-scene {
+  width: min(100%, calc((100dvh - 300px) * var(--ar))); aspect-ratio: var(--ar); perspective: 1200px;
+  cursor: grab; touch-action: none; outline: none;
+}
+.certificate-3d-scene:active { cursor: grabbing; }
+.certificate-3d-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 2px; }
+.certificate-3d-card {
+  position: relative; width: 100%; height: 100%; transform-style: preserve-3d; filter: drop-shadow(0 18px 24px #1b1e2544);
+  transition: transform .08s linear; will-change: transform;
+}
+.certificate-3d-edge, .certificate-3d-face { position: absolute; inset: 0; }
+.certificate-3d-edge { transform: translateZ(-4px); background: #d7cebb; border: 1px solid #b8ad96; backface-visibility: hidden; }
+.certificate-3d-face { overflow: hidden; border: 1px solid #d5d0c3; backface-visibility: visible; }
+.certificate-3d-front { container-type: inline-size; background: #fff; transform: translateZ(4px); z-index: 1; }
+.certificate-3d-card:not(.is-back) .certificate-3d-back, .certificate-3d-card.is-back .certificate-3d-front { visibility: hidden; }
+.certificate-3d-front .template-img { position: absolute; inset: 0; }
+.certificate-3d-back {
+  container-type: inline-size; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  color: #252525; background-color: #fff; background-image: none; transform: rotateY(180deg) translateZ(4px); z-index: 2;
+}
+.certificate-3d-back span { font-size: clamp(10px, 1.8cqw, 18px); font-weight: 500; letter-spacing: .02em; }
+.certificate-3d-back strong { font-size: clamp(16px, 4cqw, 42px); font-weight: 700; text-align: center; }
+.certificate-3d-author { color: #252525; transition: background-position .14s ease, color .14s ease; }
+.certificate-3d-scene.has-glaze .certificate-3d-author {
+  color: transparent;
+  background: linear-gradient(105deg, #252525 0%, #252525 37%, #9d8a4c 45%, #fff8cc 50%, #b39a50 54%, #252525 63%, #252525 100%);
+  background-size: 220% 100%;
+  background-position: var(--glaze-x, 50%) center;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+.certificate-3d-text { position: absolute; white-space: pre; line-height: 1.12; user-select: none; cursor: pointer; }
 .template-img { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
 .canvas-text { position: absolute; white-space: pre; line-height: 1.12; cursor: move; user-select: none; touch-action: none; outline: 1px solid transparent; outline-offset: 4px; }
 .canvas-text.is-selected { outline: 1.5px solid var(--accent); outline-offset: 4px; }
@@ -223,6 +257,8 @@ h1, h2, h3, p { margin: 0; }
   .top-actions .btn { padding: 0 12px; }
   .top-actions .btn-soft .btn-label { display: none; }
   .canvas-hint { display: none; }
+  .canvas-toolbar { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+  .canvas-toolbar-actions { margin-left: auto; }
   .editor-heading > .btn { font-size: 0; padding: 0; width: 40px; gap: 0; flex-shrink: 0; }
   .bottom-bar { flex-direction: column; align-items: stretch; gap: 12px; }
   .sample-control { width: 100%; justify-content: space-between; }
@@ -231,6 +267,7 @@ h1, h2, h3, p { margin: 0; }
   .certificate-modal { padding: 16px; border-radius: 14px; }
   .certificate-edit-fields { grid-template-columns: 1fr; }
   .certificate-pdf { height: 58dvh; }
+  .certificate-3d-scene { width: min(100%, calc(70dvh * var(--ar))); }
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions .btn { width: 100%; height: 44px; }
   .status-toast { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: calc(100vw - 24px); }

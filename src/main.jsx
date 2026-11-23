@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Upload, FileSpreadsheet, FileImage, Download, Type, Settings2, ChevronDown, Plus, Trash2,
+  Upload, FileSpreadsheet, FileImage, Download, Type, Settings2, ChevronDown, Plus, Trash2, Box, RotateCcw,
   AlignLeft, AlignCenter, AlignRight, Bold, Italic, Check, Users, FileCheck2, MousePointer2, X,
   LoaderCircle, Search, SlidersHorizontal,
 } from 'lucide-react';
@@ -225,6 +225,8 @@ function App() {
   const [fields, setFields] = useState(() => [newField({ id: 'participant-name', label: 'Participant name', text: '{{name}}', y: 0.56, size: 42 })]);
   const [selected, setSelected] = useState('participant-name');
   const [tab, setTab] = useState('style');
+  const [preview3d, setPreview3d] = useState(true);
+  const [rotation, setRotation] = useState({ x: -12, y: 22 });
   const [participants, setParticipants] = useState([]);
   const [columns, setColumns] = useState([]);
   const [nameColumn, setNameColumn] = useState('');
@@ -254,6 +256,7 @@ function App() {
   const [dropActive, setDropActive] = useState(false);
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
+  const previewDragRef = useRef(null);
   const fileInput = useRef(null), sheetInput = useRef(null), fontInput = useRef(null);
   const field = fields.find((f) => f.id === selected);
   const fontNames = [...Object.keys(BUILTIN_FONTS), ...Object.keys(fontFiles)];
@@ -308,6 +311,54 @@ function App() {
     setSelected(f.id);
     setDragging('resize');
   }, []);
+  const onPreviewPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType !== 'touch') return;
+    previewDragRef.current = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      rotation,
+      targetId: e.target.closest('[data-id]')?.dataset.id,
+      moved: false,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+  const onPreviewPointerMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--glaze-x', `${clamp((e.clientX - rect.left) / rect.width, 0, 1) * 100}%`);
+    e.currentTarget.classList.add('has-glaze');
+    const drag = previewDragRef.current;
+    if (!drag || drag.id !== e.pointerId) return;
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 5) drag.moved = true;
+    setRotation({
+      x: drag.rotation.x - (e.clientY - drag.y) * 0.45,
+      y: drag.rotation.y + (e.clientX - drag.x) * 0.45,
+    });
+  };
+  const onPreviewPointerUp = (e) => {
+    const drag = previewDragRef.current;
+    if (drag?.id !== e.pointerId) return;
+    previewDragRef.current = null;
+    if (!drag.moved && drag.targetId) {
+      setSelected(drag.targetId);
+      setPreview3d(false);
+    }
+  };
+  const onPreviewPointerLeave = (e) => e.currentTarget.classList.remove('has-glaze');
+  const onPreviewKeyDown = (e) => {
+    const step = e.shiftKey ? 30 : 10;
+    if (e.key === 'Home') {
+      e.preventDefault();
+      setRotation({ x: -12, y: 22 });
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setRotation((r) => ({
+        x: r.x + (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0),
+        y: r.y + (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0),
+      }));
+    }
+  };
   useEffect(() => {
     if (!dragging) return;
     let raf = 0, last = null;
@@ -628,7 +679,11 @@ function App() {
       </header>
 
       <main className="workspace">
-        <section className="editor-area" onPointerDown={(e) => { if (!e.target.closest('.canvas-text')) setSelected(null); }}>
+        <section className="editor-area" onPointerDown={(e) => {
+          if (e.target.closest('.canvas-text')) return;
+          setSelected(null);
+          if (!preview3d && e.target.closest('.canvas-stage')) setPreview3d(true);
+        }}>
           <div className="editor-heading">
             <div>
               <h1>Certificate editor</h1>
@@ -640,19 +695,72 @@ function App() {
 
           <div className="canvas-toolbar">
             <div className="canvas-label"><span className="canvas-dot" /> Live preview</div>
-            <div className="canvas-hint"><MousePointer2 size={14} /> Drag to move, arrow keys to nudge, drag a corner to resize</div>
+            <div className="canvas-toolbar-actions">
+              <span className="canvas-hint">{preview3d ? 'Drag to rotate. Click text to edit in 2D; click the blank canvas to return.' : <><MousePointer2 size={14} /> Drag to move, arrow keys to nudge, drag a corner to resize</>}</span>
+              {template && (
+                <>
+                  {preview3d && <button className="btn btn-outline preview-reset" onClick={() => setRotation({ x: -12, y: 22 })}><RotateCcw size={14} /> Reset view</button>}
+                  <button className="btn btn-outline preview-mode-btn" aria-pressed={preview3d} onClick={() => setPreview3d((value) => !value)}>
+                    <Box size={15} /> {preview3d ? '2D editor' : '3D preview'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="canvas-stage">
             {template ? (
-              <div className="certificate" ref={canvasRef} style={{ '--ar': template.width / template.height }}>
-                <img src={template.url} className="template-img" alt="Certificate template" draggable="false" />
-                {fields.map((f) => (
-                  <CanvasText key={f.id} f={f} text={preview(f)} selected={selected === f.id} templateWidth={template.width} onPointerDown={onPointerDown} onResizeStart={onResizeStart} />
-                ))}
-                {guides.v && <span className="guide guide-v" />}
-                {guides.h && <span className="guide guide-h" />}
-              </div>
+              preview3d ? (
+                <div
+                  className="certificate-3d-scene"
+                  style={{ '--ar': template.width / template.height }}
+                  role="group"
+                  tabIndex={0}
+                  aria-label="Interactive 3D certificate preview. Drag to rotate; use arrow keys to rotate and Home to reset."
+                  onPointerDown={onPreviewPointerDown}
+                  onPointerMove={onPreviewPointerMove}
+                  onPointerUp={onPreviewPointerUp}
+                  onPointerCancel={onPreviewPointerUp}
+                  onPointerLeave={onPreviewPointerLeave}
+                  onKeyDown={onPreviewKeyDown}
+                >
+                  <div
+                    className={`certificate-3d-card${Math.cos(rotation.x * Math.PI / 180) * Math.cos(rotation.y * Math.PI / 180) < 0 ? ' is-back' : ''}`}
+                    style={{ transform: `rotateX(${rotation.x}deg) rotateY(${rotation.y}deg)` }}
+                  >
+                    <div className="certificate-3d-edge" />
+                    <div className="certificate-3d-face certificate-3d-front">
+                      <img src={template.url} className="template-img" alt="" draggable="false" />
+                      {fields.map((f) => (
+                        <div
+                          key={f.id}
+                          className="certificate-3d-text"
+                          data-id={f.id}
+                          style={{
+                            left: `${f.x * 100}%`, top: `${f.y * 100}%`,
+                            fontFamily: fontCss(f.font), fontSize: `${(f.size / template.width) * 100}cqw`,
+                            color: f.color, fontWeight: f.bold ? 700 : 400, fontStyle: f.italic ? 'italic' : 'normal',
+                            textAlign: f.align, transform: `translate(${ANCHOR[f.align]})`,
+                          }}
+                        >{preview(f)}</div>
+                      ))}
+                    </div>
+                    <div className="certificate-3d-face certificate-3d-back" aria-hidden="true">
+                      <span>Website developed by</span>
+                      <strong className="certificate-3d-author">Mathew Joseph T A</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="certificate" ref={canvasRef} style={{ '--ar': template.width / template.height }}>
+                  <img src={template.url} className="template-img" alt="Certificate template" draggable="false" />
+                  {fields.map((f) => (
+                    <CanvasText key={f.id} f={f} text={preview(f)} selected={selected === f.id} templateWidth={template.width} onPointerDown={onPointerDown} onResizeStart={onResizeStart} />
+                  ))}
+                  {guides.v && <span className="guide guide-v" />}
+                  {guides.h && <span className="guide guide-h" />}
+                </div>
+              )
             ) : (
               <div className="empty-canvas">
                 <div className="empty-icon"><FileImage size={28} /></div>
@@ -684,7 +792,9 @@ function App() {
           </div>
 
           {tab === 'style' ? (
-            <div className="panel-content">
+            <div className="panel-content" onPointerDownCapture={(e) => {
+              if (e.target.closest('.control, .number-control, .color-control, .style-tools, .layer-select')) setPreview3d(false);
+            }}>
               <div className="panel-title-row">
                 <h2>Text layers</h2>
                 <button className="icon-btn" onClick={addField} title="Add text layer" aria-label="Add text layer"><Plus size={18} /></button>
